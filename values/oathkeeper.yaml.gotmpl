@@ -1,0 +1,304 @@
+---
+image:
+  tag: "v0.38.17-beta.1"
+
+demo: false
+maester:
+  enabled: false
+
+service:
+  proxy:
+    port: 80
+  api:
+    port: 80
+
+ingress:
+  proxy:
+    enabled: true
+    annotations:
+      kubernetes.io/ingress.class: nginx
+      nginx.ingress.kubernetes.io/rewrite-target: /$1
+    hosts:
+      - host: ory.{{ .Values.domain }}
+        paths:
+          - path: /(.*)
+            pathType: Prefix
+
+oathkeeper:
+  config:
+    log:
+      level: debug
+      format: json
+      leak_sensitive_values: true
+    
+    serve:
+      proxy:
+        port: 4455
+        cors:
+          enabled: true
+          allowed_origins:
+            - "*"
+          allowed_methods:
+            - POST
+            - GET
+            - PUT
+            - PATCH
+            - DELETE
+          allowed_headers:
+            - Authorization
+            - Content-Type
+          exposed_headers:
+            - Content-Type
+          allow_credentials: true
+          debug: true
+      api:
+        port: 4456
+    
+    errors:
+      fallback:
+        - json
+      handlers:
+        redirect:
+          enabled: true
+          config:
+            to: http://ory.{{ .Values.domain }}/panel/welcome
+            when:
+              -
+                error:
+                  - unauthorized
+                  - forbidden
+                request:
+                  header:
+                    accept:
+                      - text/html
+        json:
+          enabled: true
+          config:
+            verbose: true
+    
+    access_rules:
+      matching_strategy: glob
+      repositories:
+      - file:///etc/rules/access-rules.json
+
+    authenticators:
+      anonymous:
+        enabled: true
+        config:
+          subject: guest
+      cookie_session:
+        enabled: true
+        config:
+          check_session_url: http://kratos-public/sessions/whoami
+          preserve_path: true
+          extra_from: "@this"
+          subject_from: "identity.id"
+          only:
+            - ory_kratos_session
+      noop:
+        enabled: true
+    
+    authorizers:
+      allow:
+        enabled: true
+      remote_json:
+        enabled: true
+        config:
+          remote: http://keto-read/check
+          # https://github.com/ory/oathkeeper/issues/797
+          forward_response_headers_to_upstream: []
+          payload: |
+            {
+              "subject": {{ quote "{{ print .Subject }}" }},
+              "resource": {{ quote "{{ printIndex .MatchContext.RegexpCaptureGroups 0 }}" }}
+            }
+    
+    mutators:
+      noop:
+        enabled: true
+      id_token:
+        enabled: true
+        config:
+          issuer_url: http://ory.{{ .Values.domain }}/panel/
+          jwks_url: file:///etc/secrets/mutator.id_token.jwks.json
+          claims: |
+            {
+              "session": {{ "{{ .Extra | toJson }}" }}
+            }  
+
+  accessRules: |
+    [
+      {
+        "id": "ory:kratos:public",
+        "upstream": {
+          "preserve_host": true,
+          "url": "http://kratos-public",
+          "strip_path": "/.ory/kratos/public"
+        },
+        "match": {
+          "url": "http://ory.{{ .Values.domain }}/.ory/kratos/public/<**>",
+          "methods": [
+            "GET",
+            "POST",
+            "PUT",
+            "DELETE",
+            "PATCH"
+          ]
+        },
+        "authenticators": [
+          {
+            "handler": "noop"
+          }
+        ],
+        "authorizer": {
+          "handler": "allow"
+        },
+        "mutators": [
+          {
+            "handler": "noop"
+          }
+        ]
+      },
+      {
+        "id": "ory:kratos:admin",
+        "upstream": {
+          "preserve_host": true,
+          "url": "http://kratos-admin",
+          "strip_path": "/.ory/kratos/private"
+        },
+        "match": {
+          "url": "http://ory.{{ .Values.domain }}/.ory/kratos/private/<**>",
+          "methods": [
+            "GET",
+            "POST",
+            "PUT",
+            "DELETE",
+            "PATCH"
+          ]
+        },
+        "authenticators": [
+          {
+            "handler": "cookie_session"
+          }
+        ],
+        "authorizer": {
+          "handler": "remote_json",
+          "config": {
+            "remote": "http://keto-read/check",
+            "payload": {{ quote "{\"namespace\": \"access\", \"object\": \"administration\",\"relation\": \"access\",\"subject_id\": \"{{print .Extra.identity.traits.role }}\"}" }}
+          }
+        },
+        "mutators": [
+          {
+            "handler": "id_token"
+          }
+        ]
+      },
+      {
+        "id": "ory:kratos-admin-ui-node:protected",
+        "upstream": {
+          "preserve_host": true,
+          "url": "https://httpbin.org/anything",
+          "strip_path": "/admin"
+        },
+        "match": {
+          "url": "http://ory.{{ .Values.domain }}/admin/<**>",
+          "methods": [
+            "GET"
+          ]
+        },
+        "authenticators": [
+          {
+            "handler": "cookie_session"
+          }
+        ],
+        "authorizer": {
+          "handler": "remote_json",
+          "config": {
+            "remote": "http://keto-read/check",
+            "payload": {{ quote "{\"namespace\": \"access\",\"object\": \"administration\",\"relation\": \"access\",\"subject_id\": \"{{print .Extra.identity.traits.role }}\"}"  }}
+          }
+        },
+        "mutators": [
+          {
+            "handler": "id_token"
+          }
+        ],
+        "errors": [
+          {
+            "handler": "redirect",
+            "config": {
+              "to": "http://ory.{{ .Values.domain }}/panel/welcome"
+            }
+          }
+        ]
+      },
+      {
+        "id": "ory:kratos-selfservice-ui-node:anonymous",
+        "upstream": {
+          "preserve_host": true,
+          "url": "http://kratos-selfservice-ui-node",
+          "strip_path": "/panel"
+        },
+        "match": {
+          "url": "http://ory.{{ .Values.domain }}/panel/<{welcome,registration,verification,recovery,login,**.css,**.js,**.png}{/,}>",
+          "methods": [
+            "GET"
+          ]
+        },
+        "authenticators": [
+          {
+            "handler": "anonymous"
+          }
+        ],
+        "authorizer": {
+          "handler": "allow"
+        },
+        "mutators": [
+          {
+            "handler": "noop"
+          }
+        ]
+      },
+      {
+        "id": "ory:kratos-selfservice-ui-node:protected",
+        "upstream": {
+          "preserve_host": true,
+          "url": "http://kratos-selfservice-ui-node",
+          "strip_path": "/panel"
+        },
+        "match": {
+          "url": "http://ory.{{ .Values.domain }}/panel/<{debug,panel,settings}>",
+          "methods": [
+            "GET"
+          ]
+        },
+        "authenticators": [
+          {
+            "handler": "cookie_session"
+          }
+        ],
+        "authorizer": {
+          "handler": "remote_json",
+          "config": {
+            "remote": "http://keto-read/check",
+            "payload": {{ quote "{\"namespace\": \"access\",\"object\": \"application\",\"relation\": \"access\",\"subject_id\": \"{{print .Extra.identity.traits.role }}\"}" }}
+          }
+        },
+        "mutators": [
+          {
+            "handler": "id_token"
+          }
+        ],
+        "errors": [
+          {
+            "handler": "redirect",
+            "config": {
+              "to": "http://ory.{{ .Values.domain }}/panel/welcome"
+            }
+          }
+        ]
+      }
+    ]
+
+  mutatorIdTokenJWKs: {{ toJson .Values.oathkeeper.mutatorIdTokenJWKs }}

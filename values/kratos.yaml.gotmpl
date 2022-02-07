@@ -1,0 +1,179 @@
+---
+image:
+  tag: "v0.8.2-alpha.1"
+
+autoscaling:
+  enabled: false
+kratos:
+  development: true
+  autoMigrate: true
+  identitySchemas:
+    "identity.schema.json": |
+      {
+        "$id": "https://schemas.ory.sh/presets/kratos/quickstart/email-password/identity.schema.json",
+        "$schema": "http://json-schema.org/draft-07/schema#",
+        "title": "Person",
+        "type": "object",
+        "properties": {
+          "traits": {
+            "type": "object",
+            "properties": {
+              "email": {
+                "type": "string",
+                "format": "email",
+                "title": "E-Mail",
+                "minLength": 3,
+                "ory.sh/kratos": {
+                  "credentials": {
+                    "password": {
+                      "identifier": true
+                    },
+                    "totp": {
+                      "account_name": true
+                    }
+                  },
+                  "verification": {
+                    "via": "email"
+                  },
+                  "recovery": {
+                    "via": "email"
+                  }
+                }
+              },
+              "name": {
+                "type": "object",
+                "properties": {
+                  "first": {
+                    "title": "First Name",
+                    "type": "string"
+                  },
+                  "last": {
+                    "title": "Last Name",
+                    "type": "string"
+                  }
+                }
+              },
+              "role": {
+                "title": "Role",
+                "type": "string",
+                "default": "user",
+                "enum": ["user", "admin"]
+              },
+              "group": {
+                "title": "Group",
+                "type":"array",
+                "items": {
+                  "type": "string"
+                }
+              }
+            },
+            "required": [
+              "email"
+            ],
+            "additionalProperties": true
+          }
+        }
+      }
+  config:
+    dsn: {{ .Values.dsn }}
+    serve:
+      public:
+        base_url: http://ory.{{ .Values.domain }}/.ory/kratos/public
+        cors:
+          enabled: true
+      admin:
+        base_url: http://kratos-admin
+
+    session:
+      cookie:
+        domain: ory.{{ .Values.domain }}
+      whoami:
+        required_aal: highest_available
+
+    selfservice:
+      default_browser_return_url: http://ory.{{ .Values.domain }}/panel/welcome
+      whitelisted_return_urls:
+        - http://ory.{{ .Values.domain }}/panel/welcome
+
+      methods:
+        link:
+          enabled: true
+        password:
+          enabled: true
+        totp:
+          enabled: true
+          config:
+            issuer: ory.{{ .Values.domain }}
+        lookup_secret:
+          enabled: true
+        webauthn:
+          enabled: true
+          config:
+            rp:
+              id: ory.{{ .Values.domain }}
+              origin: http://ory.{{ .Values.domain }}
+              display_name: ory.{{ .Values.domain }}
+
+      flows:
+        error:
+          ui_url: http://ory.{{ .Values.domain }}/panel/error
+    
+        settings:
+          required_aal: highest_available
+          ui_url: http://ory.{{ .Values.domain }}/panel/settings
+          privileged_session_max_age: 15m
+    
+        recovery:
+          enabled: true
+          ui_url: http://ory.{{ .Values.domain }}/panel/recovery
+    
+        verification:
+          enabled: true
+          ui_url: http://ory.{{ .Values.domain }}/panel/verification
+          after:
+            default_browser_return_url: http://ory.{{ .Values.domain }}/panel/welcome
+    
+        logout:
+          after:
+            default_browser_return_url: http://ory.{{ .Values.domain }}/panel/login
+    
+        login:
+          ui_url: http://ory.{{ .Values.domain }}/panel/login
+          lifespan: 10m
+    
+        registration:
+          lifespan: 10m
+          ui_url: http://ory.{{ .Values.domain }}/panel/registration
+          after:
+            password:
+              hooks:
+                - hook: session
+    log:
+      level: debug
+      format: text
+      leak_sensitive_values: true
+
+    secrets:
+      default: {{ .Values.kratos.secrets.default }}
+      cookie: {{ .Values.kratos.secrets.cookie }}
+      cipher: {{ .Values.kratos.secrets.cipher }}
+
+    ciphers:
+      algorithm: xchacha20-poly1305
+
+    hashers:
+      argon2:
+        parallelism: 24
+        memory: 128MB
+        iterations: 5
+        salt_length: 16
+        key_length: 16
+
+    identity:
+      default_schema_url: file:///etc/config/identity.schema.json
+
+    courier:
+      smtp:
+        from_address: {{ .Values.kratos.courier.smtp.from_address }}
+        # URL encoded password, ex. https://www.urlencoder.org
+        connection_uri: {{ .Values.kratos.courier.smtp.connection_uri }}

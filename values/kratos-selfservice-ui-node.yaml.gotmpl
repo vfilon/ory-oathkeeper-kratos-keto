@@ -1,0 +1,19 @@
+image:
+  tag: "v0.8.3-alpha.1.pre.0"
+
+# -- Set this to ORY Kratos's Admin URL
+kratosAdminUrl: "http://kratos-admin/"
+
+# -- Set this to ORY Kratos's public URL
+kratosPublicUrl: "http://kratos-public/"
+
+# -- Set this to ORY Kratos's public URL accessible from the outside world.
+kratosBrowserUrl: "http://ory.{{ .Values.domain }}/.ory/kratos/public"
+
+# -- The baseUrl
+baseUrl: "http://ory.{{ .Values.domain }}/panel/"
+
+# -- The jwksUrl
+jwksUrl: "http://oathkeeper-api/.well-known/jwks.json"
+
+securityMode: "jwt"

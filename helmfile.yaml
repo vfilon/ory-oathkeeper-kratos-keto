@@ -1,0 +1,43 @@
+repositories:
+  - name: ory
+    url: https://k8s.ory.sh/helm/charts
+
+  - name: bitnami
+    url: https://charts.bitnami.com/bitnami
+
+environments:
+  # The "default" environment is available and used when `helmfile` is run without `--environment NAME`.
+  default:
+    values:
+    - env/default.yaml
+
+releases:
+  - name: postgres
+    chart: bitnami/postgresql
+    version: 10.3.11
+    values:
+      - values/postgres.yaml.gotmpl
+
+  - name: keto
+    chart: ory/keto
+    version: 0.21.7
+    values:
+      - values/keto.yaml.gotmpl
+
+  - name: kratos
+    chart: ory/kratos
+    version: 0.21.7
+    values:
+      - values/kratos.yaml.gotmpl
+
+  - name: kratos-selfservice-ui-node
+    chart: ory/kratos-selfservice-ui-node
+    version: 0.21.7
+    values:
+      - values/kratos-selfservice-ui-node.yaml.gotmpl
+
+  - name: oathkeeper
+    chart: ory/oathkeeper
+    version: 0.21.7
+    values:
+      - values/oathkeeper.yaml.gotmpl
