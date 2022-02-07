@@ -32,4 +32,4 @@ Go to http://ory.example.com/panel/ and create an account, you can validate your
 | URL | Description |
 | :--- | :--- |
 | http://ory.example.com/panel/welcome | User app for create an account, login, other |
-| http://ory.example.com/admin/ | Protected page -> https://httpbin.org/anything |
+| http://ory.example.com/admin/test | Protected page -> https://httpbin.org/anything/test |
